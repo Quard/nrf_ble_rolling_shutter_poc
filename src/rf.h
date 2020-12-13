@@ -13,6 +13,8 @@ struct rf_cmd_t {
     uint8_t seq_len;
     uint8_t cur_byte;
     uint8_t cur_bit;
+    uint8_t resend;
+    uint8_t resend_pause;
 };
 
 int  rf_init(void);

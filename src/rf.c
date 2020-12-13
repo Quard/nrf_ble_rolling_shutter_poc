@@ -28,6 +28,11 @@ static void rf_timer_handler(nrf_timer_event_t event_type, void *context) {
 	struct rf_cmd_t *cmd = (struct rf_cmd_t *) context;
 
 	if (event_type == NRF_TIMER_EVENT_COMPARE0) {
+        if (cmd->resend_pause != 0) {
+            cmd->resend_pause--;
+            return;
+        }
+
 		if (cmd->cur_bit == 8) {
 			cmd->cur_bit = 0;
 			cmd->cur_byte++;
@@ -35,10 +40,18 @@ static void rf_timer_handler(nrf_timer_event_t event_type, void *context) {
 			}
 		}
 		if (cmd->cur_byte > cmd->seq_len) {
-			nrfx_timer_disable(&rf_timer);
 			printk("\nSent\n");
 			gpio_pin_set(gpio0_dev, RF_GPIO_PIN, 0);
-			return;
+
+            if (cmd->resend != 0) {
+                cmd->resend--;
+                cmd->resend_pause = 4;
+                cmd->cur_bit = 0;
+	            cmd->cur_byte = 0;
+            } else {
+                nrfx_timer_disable(&rf_timer);
+			    return;
+            }
 		}
 
 		uint8_t bt = (cmd->seq[cmd->cur_byte] >> (7 - cmd->cur_bit)) & 1;
@@ -90,6 +103,7 @@ void rf_set_cmd(uint8_t cmd_code) {
     rf_cmd.seq_len = 17;
 	rf_cmd.cur_bit = 0;
 	rf_cmd.cur_byte = 0;
+    rf_cmd.resend = 10;
 
     uint8_t seq[][17] = {
         // ... fill with your codes
