@@ -26,11 +26,38 @@ static const struct bt_data sd[] = {
     BT_DATA_BYTES(BT_DATA_UUID128_ALL, KITCHEN_SERVICE_UUID)
 };
 
+static struct k_work adv_work;
+
 static void error(void) {
     for (;;) {
         printk("Unexpected Error\n");
         k_sleep(K_MSEC(1000));
     }
+}
+
+static void adv_continue(void) {
+	struct bt_le_adv_param adv_param;
+
+    int err;
+
+    adv_param = *BT_LE_ADV_CONN;
+    adv_param.options |= BT_LE_ADV_OPT_ONE_TIME;
+    err = bt_le_adv_start(&adv_param, ad, ARRAY_SIZE(ad),
+                sd, ARRAY_SIZE(sd));
+    if (err) {
+        printk("Advertising failed to start (err %d)\n", err);
+        return;
+    }
+
+    printk("Regular advertising started\n");
+}
+
+static void adv_start(void) {
+    k_work_submit(&adv_work);
+}
+
+static void adv_handler(struct k_work *work) {
+    adv_continue();
 }
 
 static void bt_connected(struct bt_conn *conn, uint8_t err) {
@@ -53,11 +80,15 @@ static void bt_connected(struct bt_conn *conn, uint8_t err) {
         Connection interval: %u\n\
         Slave latency: %u\n\
         Connection supervisory timeout: %u\n", addr, info.role, info.le.interval, info.le.latency, info.le.timeout);
+
+        adv_start();
     }
 }
 
 static void bt_disconnected(struct bt_conn *conn, uint8_t reason) {
     printk("BLE disconnected (reason: %d)\n", reason);
+
+    adv_start();
 }
 
 static bool bt_le_param_req(struct bt_conn *conn, struct bt_le_conn_param *param) {
@@ -94,17 +125,9 @@ static void bt_ready(int err) {
         return;
     }
 
-    err = bt_le_adv_start(
-        BT_LE_ADV_CONN,
-        ad, ARRAY_SIZE(ad),
-        sd, ARRAY_SIZE(sd)
-    );
-    if (err) {
-        printk("BT Advertising failed to start (err %d)\n", err);
-        return;
-    }
-
     bt_conn_cb_register(&bt_conn_callbacks);
+
+    adv_start();
 
     k_sem_give(&ble_init_ok);
 }
@@ -114,6 +137,7 @@ void main(void) {
 
     printk("Starting nRF BLE Rolling Shutter controll POC\n");
 
+    k_work_init(&adv_work, adv_handler);
     err = bt_enable(bt_ready);
     if (err != 0) {
         printk("BLE initialization failed\n");
